@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  /* Vos couleurs personnalisées */
+  --color-desert-bg: #F2EFE9;
+  --color-desert-paper: #FCFBF9;
+  --color-desert-sidebar: #E4DFD3;
+  --color-desert-border: #CFC6B8;
+  --color-desert-text: #4A4036;
+  --color-desert-heading: #2C221C;
+  --color-desert-accent: #B35D43;
+  --color-desert-done: #6B7A59;
+  --color-desert-progress: #C98B4B;
+  --color-desert-todo: #9A8F83;
+}
+
+body {
+  background-color: var(--color-desert-bg);
+  color: var(--color-desert-text);
+}
+
+/* Style "Document officiel" pour les tableaux */
+.bureaucratic-table th {
+  border-bottom: 2px solid var(--color-desert-heading);
+  font-family: var(--font-serif), serif;
+  font-weight: 700;
+}
+.bureaucratic-table td {
+  border-bottom: 1px solid var(--color-desert-border);
+}
+
+/* Scrollbar élégante */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-desert-sidebar);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-desert-accent);
+  border-radius: 4px;
+}
