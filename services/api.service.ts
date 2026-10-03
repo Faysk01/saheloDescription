@@ -1,46 +1,59 @@
-// Récupère l'URL de Ngrok (via Vercel ou votre fichier .env local), sinon utilise localhost par défaut
+// ==========================================
+// 🌐 CONFIGURATION DE L'URL DE L'API
+// ==========================================
+// Récupère l'URL de Ngrok (via Vercel ou fichier .env local)
+// Fallback sur localhost:5000 en cas de développement local pur
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-// Fonction utilitaire pour gérer les requêtes et intercepter les erreurs HTTP
+// ==========================================
+// 🛠️ FONCTION UTILITAIRE (FETCH WRAPPER)
+// ==========================================
 const fetchWrapper = async (url: string, options: RequestInit = {}) => {
-  // 1. Centralisation des headers
+  // 1. Centralisation et configuration des headers
   const finalOptions: RequestInit = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      // 🚀 ASTUCE PRO NGROK : Contourne la page de blocage de sécurité de la version gratuite
+      // 🚀 ASTUCE PRO NGROK : Contourne la page d'avertissement navigateur de Ngrok
       'ngrok-skip-browser-warning': 'true',
       ...options.headers,
     },
-    // 2. Désactivation du cache agressif de Next.js (Crucial pour du temps réel)
+    // 2. Désactivation du cache agressif de Next.js (Crucial pour des données en temps réel)
     cache: 'no-store',
   };
 
+  // 3. Exécution de la requête
   const res = await fetch(url, finalOptions);
   
+  // 4. Interception et gestion centralisée des erreurs HTTP
   if (!res.ok) {
-    // Tente de récupérer le message d'erreur du backend
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `Erreur serveur: ${res.status}`);
+    // 🛡️ Typage strict de l'erreur pour éviter le "any" implicite
+    const errorData = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new Error((errorData.error as string) || `Erreur serveur: ${res.status}`);
   }
   
-  // 3. Sécurité : Vérifie s'il y a du contenu avant de parser le JSON
+  // 5. Sécurité : Vérification du contenu avant de parser le JSON
   const text = await res.text();
   return text ? JSON.parse(text) : {};
 };
 
+// ==========================================
+// 🚀 SERVICES API (EXPOSÉS AU FRONTEND)
+// ==========================================
 export const api = {
-  // 📊 DASHBOARD
+  
+  // 📊 1. MODULE DASHBOARD
   dashboard: {
     get: () => fetchWrapper(`${API_URL}/api/dashboard`),
-    update: (data: any) => fetchWrapper(`${API_URL}/api/dashboard`, {
+    // Remplacement de (data: any) par le type générique <T>(data: T)
+    update: <T>(data: T) => fetchWrapper(`${API_URL}/api/dashboard`, {
       method: 'PUT',
       body: JSON.stringify(data)
     })
   },
 
-  // 📝 TÂCHES
+  // 📝 2. MODULE REGISTRE DES TÂCHES (Kanban)
   tasks: {
     getAll: () => fetchWrapper(`${API_URL}/api/tasks`),
     create: (title: string) => fetchWrapper(`${API_URL}/api/tasks`, {
@@ -56,10 +69,11 @@ export const api = {
     })
   },
 
-  // 💰 BUDGET
+  // 💰 3. MODULE BUDGET & STATUTS
   budget: {
     getAll: () => fetchWrapper(`${API_URL}/api/budget`),
-    create: (data: any) => fetchWrapper(`${API_URL}/api/budget`, {
+    // Utilisation du générique <T>
+    create: <T>(data: T) => fetchWrapper(`${API_URL}/api/budget`, {
       method: 'POST',
       body: JSON.stringify(data)
     }),
@@ -68,19 +82,21 @@ export const api = {
     })
   },
 
-  // 🤝 PITCH
+  // 🤝 4. MODULE PITCH INVESTISSEURS
   pitch: {
     get: () => fetchWrapper(`${API_URL}/api/pitch`),
-    update: (data: any) => fetchWrapper(`${API_URL}/api/pitch`, {
+    // Utilisation du générique <T>
+    update: <T>(data: T) => fetchWrapper(`${API_URL}/api/pitch`, {
       method: 'PUT',
       body: JSON.stringify(data)
     }),
   },
 
-  // 📅 CHRONOGRAMME
+  // 📅 5. MODULE CHRONOGRAMME D'EXÉCUTION
   timeline: {
     getAll: () => fetchWrapper(`${API_URL}/api/timeline`),
-    create: (data: any) => fetchWrapper(`${API_URL}/api/timeline`, {
+    // Utilisation du générique <T>
+    create: <T>(data: T) => fetchWrapper(`${API_URL}/api/timeline`, {
       method: 'POST',
       body: JSON.stringify(data)
     }),

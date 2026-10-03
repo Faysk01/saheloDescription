@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../services/api.service";
 
+// Typage strict pour éviter les "any"
 type Task = {
   id: string;
   title: string;
@@ -16,48 +17,57 @@ export default function TasksSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   
-  // 🚀 NOUVEAU : État pour savoir quelle tâche on est en train de confirmer pour la suppression
+  // État pour savoir quelle tâche on est en train de confirmer pour la suppression
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
 
-  const fetchTasks = async () => {
-    try {
-      const data = await api.tasks.getAll();
-      setTasks(data);
-    } catch (error: any) {
-      console.error("Erreur de chargement des tâches :", error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // 🛡️ CORRECTION 1 & 2 : Chargement initial DANS le useEffect
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    const loadInitialTasks = async () => {
+      try {
+        const data = await api.tasks.getAll();
+        setTasks(data as Task[]); // Typage strict de la réponse
+      } catch (err) {
+        // 🛡️ CORRECTION 3 : On utilise la variable d'erreur capturée
+        console.error("Erreur de chargement des tâches :", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadInitialTasks();
+  }, []); // Le tableau vide garantit une seule exécution au démarrage
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
     try {
-      const newTask = await api.tasks.create(newTaskTitle);
+      const newTask = (await api.tasks.create(newTaskTitle)) as Task;
       setTasks([newTask, ...tasks]); 
       setNewTaskTitle(""); 
-    } catch (error: any) {
-      alert(`Erreur : ${error.message}`);
+    } catch (err) {
+      console.error("Erreur lors de l'ajout :", err);
+      alert("Erreur lors de l'ajout de la tâche.");
     }
   };
 
-  const handleMoveTask = async (id: string, newStatus: string) => {
+  // 🛡️ CORRECTION 1 : On force le paramètre à n'accepter QUE les 3 statuts possibles (fini le "as any")
+  const handleMoveTask = async (id: string, newStatus: Task["status"]) => {
+    // 1. Mise à jour immédiate de l'interface (Optimistic UI)
+    setTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t));
+    
     try {
-      setTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus as any } : t));
+      // 2. Envoi au backend
       await api.tasks.updateStatus(id, newStatus);
-    } catch (error: any) {
-      alert(`Erreur de déplacement : ${error.message}`);
-      fetchTasks(); 
+    } catch (err) {
+      console.error("Erreur de déplacement :", err);
+      alert("Erreur lors du déplacement de la tâche.");
+      // 3. En cas d'erreur serveur, on resynchronise directement les données pour corriger l'affichage
+      const data = await api.tasks.getAll();
+      setTasks(data as Task[]);
     }
   };
 
-  // 🚀 NOUVELLE FONCTION : Exécute la suppression après la confirmation personnalisée
   const confirmDelete = async (id: string) => {
     try {
       // Met à jour l'interface immédiatement
@@ -66,9 +76,12 @@ export default function TasksSection() {
       
       // Envoie la requête au backend
       await api.tasks.delete(id);
-    } catch (error: any) {
-      alert(`Erreur lors de la suppression : ${error.message}`);
-      fetchTasks();
+    } catch (err) {
+      console.error("Erreur lors de la suppression :", err);
+      alert("Erreur lors de la suppression de la tâche.");
+      // Resynchronisation en cas d'échec
+      const data = await api.tasks.getAll();
+      setTasks(data as Task[]);
     }
   };
 
@@ -83,7 +96,7 @@ export default function TasksSection() {
       <header className="mb-8 border-b-2 border-desert-heading pb-4 flex justify-between items-end flex-wrap gap-4">
         <div>
           <h2 className="font-serif text-3xl text-desert-heading font-bold">Registre des Tâches</h2>
-          <p className="text-desert-text mt-2 font-serif italic">Classification de l'état d'avancement des dossiers.</p>
+          <p className="text-desert-text mt-2 font-serif italic">Classification de l&rsquo;état d&rsquo;avancement des dossiers.</p>
         </div>
         
         <form onSubmit={handleAddTask} className="flex gap-2 w-full md:w-auto">
@@ -113,7 +126,7 @@ export default function TasksSection() {
                 <span className="absolute top-2 right-2 text-desert-done text-xs"><i className="fa-solid fa-check"></i></span>
                 <h4 className="font-bold text-desert-heading mb-1 text-sm pr-6">{task.title}</h4>
                 
-                {/* 🚀 ZONE D'ACTION PERSONNALISÉE */}
+                {/* ZONE D'ACTION PERSONNALISÉE */}
                 <div className={`mt-4 flex justify-between items-center transition-opacity ${taskToDelete === task.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                   {taskToDelete === task.id ? (
                     <div className="flex w-full justify-between items-center animate-[fadeIn_0.2s_ease-in-out]">
@@ -147,7 +160,7 @@ export default function TasksSection() {
               <div key={task.id} className="bg-desert-paper p-4 border-l-4 border-desert-progress shadow-sm relative group">
                 <h4 className="font-bold text-desert-heading mb-1 text-sm">{task.title}</h4>
                 
-                {/* 🚀 ZONE D'ACTION PERSONNALISÉE */}
+                {/* ZONE D'ACTION PERSONNALISÉE */}
                 <div className={`mt-4 flex justify-between items-center transition-opacity ${taskToDelete === task.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                   {taskToDelete === task.id ? (
                     <div className="flex w-full justify-between items-center animate-[fadeIn_0.2s_ease-in-out]">
@@ -184,7 +197,7 @@ export default function TasksSection() {
               <div key={task.id} className="bg-desert-paper p-4 border-l-4 border-desert-todo border-dashed shadow-sm relative group">
                 <h4 className="font-bold text-desert-todo mb-1 text-sm">{task.title}</h4>
                 
-                {/* 🚀 ZONE D'ACTION PERSONNALISÉE */}
+                {/* ZONE D'ACTION PERSONNALISÉE */}
                 <div className={`mt-4 flex justify-between items-center transition-opacity ${taskToDelete === task.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                   {taskToDelete === task.id ? (
                     <div className="flex w-full justify-between items-center animate-[fadeIn_0.2s_ease-in-out]">

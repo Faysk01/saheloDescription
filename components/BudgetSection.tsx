@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../services/api.service";
 
-// Typage d'une ligne de budget
+// Typage strict d'une ligne de budget
 type BudgetItem = {
   id: string;
   label: string;
@@ -22,55 +22,62 @@ export default function BudgetSection() {
   const [newAmount, setNewAmount] = useState("");
   const [newStatus, setNewStatus] = useState("En attente");
 
-  // 1. Récupérer le budget depuis le backend
-  const fetchBudget = async () => {
-    try {
-      const data = await api.budget.getAll();
-      setItems(data);
-    } catch (error) {
-      console.error("Erreur API Budget", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // 🛡️ CORRECTION 1 : La fonction de chargement est DANS le useEffect
   useEffect(() => {
-    fetchBudget();
-  }, []);
+    const loadBudget = async () => {
+      try {
+        const data = await api.budget.getAll();
+        // S'assurer que 'data' est bien un tableau de BudgetItem
+        setItems(data as BudgetItem[]);
+      } catch (err) {
+        // 🛡️ CORRECTION 2 : L'erreur est utilisée
+        console.error("Erreur de chargement API Budget :", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  // 2. Ajouter une nouvelle ligne
+    loadBudget();
+  }, []); // Dépendance vide = Exécution unique au montage
+
+  // Ajouter une nouvelle ligne
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLabel || !newAmount) return;
 
     try {
-      const newItem = await api.budget.create({
+      const newItem = (await api.budget.create({
         label: newLabel,
         amount: Number(newAmount),
         status: newStatus,
-        isExpense: true // Par défaut on considère que c'est une dépense
-      });
-      setItems([...items, newItem]); // Ajoute à la liste affichée
-      setIsAdding(false); // Ferme le formulaire
-      setNewLabel(""); // Réinitialise
+        isExpense: true // Par défaut, on considère que c'est une dépense
+      })) as BudgetItem;
+      
+      setItems((prevItems) => [...prevItems, newItem]);
+      setIsAdding(false);
+      setNewLabel("");
       setNewAmount("");
-    } catch (error) {
+    } catch (err) {
+      // 🛡️ CORRECTION 2 : L'erreur est utilisée
+      console.error("Erreur lors de l'ajout au budget :", err);
       alert("Erreur lors de l'ajout de la ligne budgétaire.");
     }
   };
 
-  // 3. Supprimer une ligne
+  // Supprimer une ligne
   const handleDelete = async (id: string) => {
     if (!confirm("Voulez-vous vraiment retirer cette ligne du budget ?")) return;
     try {
       await api.budget.delete(id);
-      setItems(items.filter(item => item.id !== id)); // Retire de l'affichage
-    } catch (error) {
+      setItems((prevItems) => prevItems.filter(item => item.id !== id));
+    } catch (err) {
+      // 🛡️ CORRECTION 2 : L'erreur est utilisée
+      console.error("Erreur lors de la suppression :", err);
       alert("Erreur lors de la suppression.");
     }
   };
 
-  // Calcul du total automatique
+  // Calcul du total automatique (se met à jour seul à chaque changement de 'items')
   const totalAmount = items.reduce((total, item) => total + item.amount, 0);
 
   if (isLoading) return <div className="p-10 text-center animate-pulse text-desert-todo font-serif">Chargement des données financières...</div>;
@@ -102,7 +109,7 @@ export default function BudgetSection() {
             <ul className="text-sm font-serif space-y-2 text-desert-text">
               <li><strong>Type :</strong> Società a Responsabilità Limitata Semplificata (S.r.l.s.)</li>
               <li><strong>Lieu :</strong> Italie</li>
-              <li><strong>Rôle :</strong> Signature partenaire API (Paytop), encaissement (€), propriétaire de l'App.</li>
+              <li><strong>Rôle :</strong> Signature partenaire API (Paytop), encaissement (€), propriétaire de l&rsquo;App.</li>
             </ul>
           </div>
 
@@ -120,9 +127,9 @@ export default function BudgetSection() {
         <div>
           <h3 className="font-serif font-bold text-xl text-desert-heading mb-4"><i className="fa-solid fa-vault mr-2"></i> Allocation du Budget Initial</h3>
           
-          {/* Formulaire d'ajout (visible si isAdding = true) */}
+          {/* Formulaire d'ajout */}
           {isAdding && (
-            <form onSubmit={handleAddItem} className="bg-white p-4 border border-desert-accent rounded-sm mb-4 space-y-3 shadow-sm">
+            <form onSubmit={handleAddItem} className="bg-white p-4 border border-desert-accent rounded-sm mb-4 space-y-3 shadow-sm animate-[fadeIn_0.2s_ease-in-out]">
               <div>
                 <label className="block text-xs uppercase font-bold text-desert-todo mb-1">Libellé de la dépense</label>
                 <input type="text" value={newLabel} onChange={(e)=>setNewLabel(e.target.value)} placeholder="Ex: Frais de serveur..." className="w-full p-2 border border-desert-border rounded-sm focus:outline-none focus:border-desert-accent text-sm" required />

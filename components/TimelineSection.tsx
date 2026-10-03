@@ -27,37 +27,56 @@ export default function TimelineSection() {
     orderIndex: 1
   });
 
-  const fetchTimeline = async () => {
-    try {
-      const data = await api.timeline.getAll();
-      setEvents(data);
-    } catch (error) {
-      console.error("Erreur API", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // 🛡️ CORRECTION 1 & 2 : Le chargement initial est déclaré DANS le useEffect
+  useEffect(() => {
+    const loadTimeline = async () => {
+      try {
+        const data = await api.timeline.getAll();
+        setEvents(data as TimelineEvent[]); // Typage strict
+      } catch (err) {
+        // 🛡️ CORRECTION 3 : L'erreur est utilisée
+        console.error("Erreur de chargement du chronogramme :", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  useEffect(() => { fetchTimeline(); }, []);
+    loadTimeline();
+  }, []); // Le tableau vide garantit une seule exécution au démarrage
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await api.timeline.create(formData);
-      fetchTimeline();
+      
+      // 🛡️ Resynchronisation propre depuis le backend après un ajout
+      const updatedData = await api.timeline.getAll();
+      setEvents(updatedData as TimelineEvent[]);
+      
       setFormData({ ...formData, adminText: "", techText: "", orderIndex: formData.orderIndex + 1 });
-    } catch (error: any) {
-      alert(`Erreur : ${error.message}`);
+    } catch (err) {
+      // 🛡️ CORRECTION 3 : L'erreur est utilisée sans "any"
+      console.error("Erreur lors de l'ajout :", err);
+      alert("Erreur lors de l'ajout de la semaine.");
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Supprimer cette semaine du chronogramme ?")) return;
     try {
+      // Optimisation : Mise à jour immédiate de l'interface (Optimistic UI)
+      setEvents((prevEvents) => prevEvents.filter((e) => e.id !== id));
+      
+      // Appel au backend
       await api.timeline.delete(id);
-      setEvents(events.filter(e => e.id !== id));
-    } catch (error: any) {
-      alert(`Erreur : ${error.message}`);
+    } catch (err) {
+      // 🛡️ CORRECTION 3 : L'erreur est utilisée sans "any"
+      console.error("Erreur lors de la suppression :", err);
+      alert("Erreur lors de la suppression.");
+      
+      // En cas d'échec serveur, on resynchronise l'affichage avec la base de données
+      const updatedData = await api.timeline.getAll();
+      setEvents(updatedData as TimelineEvent[]);
     }
   };
 
@@ -72,7 +91,7 @@ export default function TimelineSection() {
   const getBadge = (status: string) => {
     if (status === "Terminé") return <span className="inline-block px-2 py-1 bg-desert-done/20 text-desert-done text-xs font-bold mb-1 border border-desert-done/30">Terminé</span>;
     if (status === "En cours") return <span className="inline-block px-2 py-1 bg-desert-progress text-white text-xs font-bold mb-1 shadow-sm">En cours</span>;
-    return null; // Planifié n'a pas de badge dans votre design
+    return null; // Planifié n'a pas de badge
   };
 
   if (isLoading) return <div className="p-10 text-center animate-pulse text-desert-todo font-serif">Chargement du document officiel...</div>;
@@ -81,7 +100,7 @@ export default function TimelineSection() {
     <section className="animate-[fadeIn_0.4s_ease-in-out]">
       <header className="mb-8 border-b-2 border-desert-heading pb-4 flex justify-between items-end flex-wrap gap-4">
         <div>
-          <h2 className="font-serif text-3xl text-desert-heading font-bold">Chronogramme d'Exécution</h2>
+          <h2 className="font-serif text-3xl text-desert-heading font-bold">Chronogramme d&rdquo;Exécution</h2>
           <p className="text-desert-text mt-2 font-serif italic">Planification des chantiers Administratifs et Techniques en parallèle.</p>
         </div>
         <button 
@@ -118,7 +137,7 @@ export default function TimelineSection() {
               </select>
             </div>
           </div>
-          <button type="submit" className="bg-desert-accent text-white px-6 py-2 rounded-sm font-bold text-sm w-full uppercase tracking-widest">Enregistrer la ligne</button>
+          <button type="submit" className="bg-desert-accent text-white px-6 py-2 rounded-sm font-bold text-sm w-full uppercase tracking-widest hover:bg-desert-heading transition-colors">Enregistrer la ligne</button>
         </form>
       )}
 
@@ -135,7 +154,7 @@ export default function TimelineSection() {
           </thead>
           <tbody className="text-sm">
             {Object.keys(groupedEvents).length === 0 ? (
-              <tr><td colSpan={isEditing ? 4 : 3} className="p-6 text-center text-desert-todo italic">Aucune donnée dans le chronogramme. Cliquez sur "Éditer le Plan" pour commencer.</td></tr>
+              <tr><td colSpan={isEditing ? 4 : 3} className="p-6 text-center text-desert-todo italic">Aucune donnée dans le chronogramme. Cliquez sur &rdquo;Éditer le Plan&rdquo; pour commencer.</td></tr>
             ) : (
               Object.entries(groupedEvents).map(([month, monthEvents]) => (
                 <React.Fragment key={month}>
@@ -152,7 +171,7 @@ export default function TimelineSection() {
                     const isPlanifie = event.adminStatus === "Planifié" && event.techStatus === "Planifié";
                     
                     return (
-                      <tr key={event.id} className="group">
+                      <tr key={event.id} className="group hover:bg-desert-sidebar/10 transition-colors">
                         <td className={`p-4 border-b border-desert-border font-serif ${isEnCours ? 'bg-desert-progress/10' : ''} ${isPlanifie ? 'text-desert-todo' : ''}`}>
                           {event.weekLabel}
                         </td>
@@ -166,7 +185,7 @@ export default function TimelineSection() {
                         </td>
                         {isEditing && (
                           <td className="p-4 border-l border-b border-desert-border text-center">
-                            <button onClick={() => handleDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors">
+                            <button onClick={() => handleDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100">
                               <i className="fa-solid fa-trash"></i>
                             </button>
                           </td>
