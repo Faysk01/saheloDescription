@@ -7,7 +7,7 @@ import { api } from "../services/api.service";
 type AdvanceType = "DONE" | "IN_PROGRESS" | "AUDIT";
 
 type AdvanceItem = {
-  id: string; // Utile pour React (Key) et pour cibler la suppression
+  id: string;
   type: AdvanceType;
   title: string;
   desc: string;
@@ -17,7 +17,7 @@ type AdvanceItem = {
 // Typage du Dashboard
 type DashboardStats = {
   goal: string;
-  advances: AdvanceItem[]; // 👈 Le fameux tableau JSON illimité !
+  advances: AdvanceItem[];
 };
 
 type TimelineEvent = {
@@ -30,13 +30,17 @@ type TimelineEvent = {
 export default function DashboardSection() {
   const [stats, setStats] = useState<DashboardStats>({
     goal: "",
-    advances: [], // Vide par défaut
+    advances: [], 
   });
   
   const [dynamicData, setDynamicData] = useState({ progress: 0, phase: "Analyse en cours...", daysLeft: 0 });
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // États pour les Popups personnalisés
   const [activePopup, setActivePopup] = useState<{title: string, content: string} | null>(null);
+  // 🚀 NOUVEAU : État pour gérer notre Popup de confirmation de suppression
+  const [advanceToDelete, setAdvanceToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -49,7 +53,6 @@ export default function DashboardSection() {
         if (dashData) {
           setStats({
             goal: dashData.goal || "",
-            // On s'assure que c'est bien un tableau (par sécurité)
             advances: Array.isArray(dashData.advances) ? dashData.advances : [],
           });
         }
@@ -100,15 +103,12 @@ export default function DashboardSection() {
     }
   };
 
-  // ==========================================
-  // 🚀 FONCTIONS DE GESTION DU TABLEAU DYNAMIQUE
-  // ==========================================
   const handleAddAdvance = () => {
     setStats({
       ...stats,
       advances: [
         ...stats.advances,
-        { id: Date.now().toString(), type: "DONE", title: "", desc: "", popup: "" } // Ajout au bout du tableau
+        { id: Date.now().toString(), type: "DONE", title: "", desc: "", popup: "" }
       ]
     });
   };
@@ -120,14 +120,17 @@ export default function DashboardSection() {
     });
   };
 
-  const handleRemoveAdvance = (id: string) => {
-    setStats({
-      ...stats,
-      advances: stats.advances.filter(adv => adv.id !== id)
-    });
+  // 🚀 NOUVEAU : Fonction de suppression qui valide l'ID stocké dans le state
+  const confirmRemoveAdvance = () => {
+    if (advanceToDelete) {
+      setStats({
+        ...stats,
+        advances: stats.advances.filter(adv => adv.id !== advanceToDelete)
+      });
+      setAdvanceToDelete(null); // On ferme la modale
+    }
   };
 
-  // Visuel dynamique selon le type choisi
   const getIconForType = (type: AdvanceType) => {
     if (type === "DONE") return <i className="fa-solid fa-check-circle text-desert-done mt-1"></i>;
     if (type === "IN_PROGRESS") return <i className="fa-solid fa-pen-nib text-desert-progress mt-1"></i>;
@@ -184,17 +187,16 @@ export default function DashboardSection() {
       </div>
 
       {isEditing ? (
-        /* ✏️ MODE ÉDITION DES AVANCÉES (DYNAMIQUE) */
+        /* ✏️ MODE ÉDITION DES AVANCÉES */
         <div className="bg-desert-paper p-6 border-2 border-dashed border-desert-accent shadow-sm rounded-sm mb-8 animate-[fadeIn_0.2s_ease-in-out]">
           <h3 className="font-serif font-bold text-lg text-desert-accent border-b border-desert-border pb-2 mb-4">Gestion des Avancées Récentes</h3>
           <div className="space-y-6">
             
-            {/* BOUCLE SUR LE TABLEAU D'AVANCÉES */}
             {stats.advances.map((adv) => (
               <div key={adv.id} className="bg-desert-bg/50 p-4 border border-desert-border rounded-sm space-y-3 relative group">
                 
-                {/* Bouton pour supprimer CE bloc précis */}
-                <button onClick={() => handleRemoveAdvance(adv.id)} className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Supprimer cette avancée">
+                {/* 🚀 CHANGEMENT : Ouvre notre modal personnalisée au lieu de supprimer direct */}
+                <button onClick={() => setAdvanceToDelete(adv.id)} className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Supprimer cette avancée">
                   <i className="fa-solid fa-trash"></i>
                 </button>
 
@@ -213,7 +215,6 @@ export default function DashboardSection() {
               </div>
             ))}
 
-            {/* BOUTON POUR AJOUTER UNE NOUVELLE AVANCÉE AU TABLEAU */}
             <button onClick={handleAddAdvance} className="w-full py-3 bg-desert-sidebar text-desert-heading border border-dashed border-desert-border hover:bg-desert-border/50 font-bold uppercase text-xs tracking-widest transition-colors mt-4">
               <i className="fa-solid fa-plus mr-2"></i> Ajouter une avancée
             </button>
@@ -249,7 +250,7 @@ export default function DashboardSection() {
         </div>
       )}
 
-      {/* 🌟 LE SYSTÈME DE POPUP */}
+      {/* 🌟 LE SYSTÈME DE POPUP (Détails) */}
       {activePopup && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
           <div className="bg-desert-paper border-2 border-desert-heading w-full max-w-2xl p-8 rounded-sm shadow-2xl relative">
@@ -265,6 +266,38 @@ export default function DashboardSection() {
             <div className="mt-8 text-right">
               <button onClick={() => setActivePopup(null)} className="bg-desert-heading text-white px-6 py-2 rounded-sm text-sm uppercase tracking-wider hover:bg-desert-accent transition-colors">
                 Fermer le document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚨 NOUVEAU : NOTRE MODAL DE CONFIRMATION DE SUPPRESSION */}
+      {advanceToDelete && (
+        <div className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
+          <div className="bg-white border-2 border-red-500 w-full max-w-md p-6 rounded-sm shadow-2xl relative">
+            <div className="flex items-center gap-4 mb-2">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-500 text-xl shrink-0">
+                <i className="fa-solid fa-triangle-exclamation"></i>
+              </div>
+              <div>
+                <h3 className="font-serif text-xl font-bold text-gray-800">Confirmer la suppression</h3>
+                <p className="text-sm text-gray-500 mt-1">Êtes-vous sûr de vouloir supprimer ce bloc d&rsquo;avancée ?</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button 
+                onClick={() => setAdvanceToDelete(null)} 
+                className="flex-1 py-2 bg-gray-100 text-gray-600 text-sm font-bold uppercase tracking-wider rounded-sm hover:bg-gray-200 transition-colors"
+              >
+                Annuler
+              </button>
+              <button 
+                onClick={confirmRemoveAdvance} 
+                className="flex-1 py-2 bg-red-500 text-white text-sm font-bold uppercase tracking-wider rounded-sm hover:bg-red-600 transition-colors shadow-sm"
+              >
+                Oui, Supprimer
               </button>
             </div>
           </div>

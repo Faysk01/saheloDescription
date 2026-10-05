@@ -97,6 +97,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
+    
+    // 🚀 NOUVELLE FONCTION AJOUTÉE ICI : Indispensable pour modifier le Track Admin ou Tech
+    update: <T>(id: string, data: T) => fetchWrapper(`${API_URL}/api/timeline/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
     delete: (id: string) => fetchWrapper(`${API_URL}/api/timeline/${id}`, { 
       method: 'DELETE' 
     })
