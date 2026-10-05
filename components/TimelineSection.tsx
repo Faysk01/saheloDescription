@@ -19,7 +19,7 @@ export default function TimelineSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Formulaire de CRÉATION d'une nouvelle semaine (Structure de base)
+  // Formulaire de CRÉATION d'une nouvelle ligne
   const [formData, setFormData] = useState({
     monthGroup: "Mois 1 - Structuration", weekLabel: "Semaine 1",
     adminText: "", adminStatus: "Planifié",
@@ -30,6 +30,9 @@ export default function TimelineSection() {
   // États pour l'édition SÉPARÉE (Track Admin vs Track Tech)
   const [editingTrack, setEditingTrack] = useState<{ id: string, type: 'admin' | 'tech', title: string } | null>(null);
   const [trackFormData, setTrackFormData] = useState({ text: "", status: "" });
+
+  // 🚀 NOUVEAU : État pour le popup de suppression personnalisé
+  const [eventToDelete, setEventToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const loadTimeline = async () => {
@@ -45,36 +48,42 @@ export default function TimelineSection() {
     loadTimeline();
   }, []);
 
-  // Création d'une nouvelle semaine globale
   const handleAddWeek = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await api.timeline.create(formData);
       const updatedData = await api.timeline.getAll();
       setEvents(updatedData as TimelineEvent[]);
-      // Note : On garde le même monthGroup et weekLabel dans le formulaire pour faciliter l'ajout en chaîne !
       setFormData({ ...formData, adminText: "", techText: "", orderIndex: formData.orderIndex + 1 });
     } catch (err) {
       console.error("Erreur lors de l'ajout :", err);
-      alert("Erreur lors de l'ajout de la semaine.");
+      alert("Erreur lors de l'ajout de la ligne.");
     }
   };
 
-  // Suppression d'une semaine
-  const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer intégralement cette ligne du chronogramme ?")) return;
+  // 🚀 NOUVEAU : La fonction de suppression qui utilise notre Popup
+  const confirmDelete = async () => {
+    if (!eventToDelete) return;
+    
+    // On ferme d'abord le popup
+    const idToDelete = eventToDelete;
+    setEventToDelete(null);
+
     try {
-      setEvents((prevEvents) => prevEvents.filter((e) => e.id !== id));
-      await api.timeline.delete(id);
+      // Optimistic UI : On retire visuellement la ligne tout de suite
+      setEvents((prevEvents) => prevEvents.filter((e) => e.id !== idToDelete));
+      
+      // On envoie l'ordre de suppression au backend
+      await api.timeline.delete(idToDelete);
     } catch (err) {
       console.error("Erreur lors de la suppression :", err);
       alert("Erreur lors de la suppression.");
+      // Rollback en cas d'erreur
       const updatedData = await api.timeline.getAll();
       setEvents(updatedData as TimelineEvent[]);
     }
   };
 
-  // 1. Ouvrir le mini-formulaire pour UNE SEULE équipe
   const openTrackEditor = (event: TimelineEvent, type: 'admin' | 'tech') => {
     setEditingTrack({ id: event.id, type, title: `${event.monthGroup} - ${event.weekLabel}` });
     
@@ -85,7 +94,6 @@ export default function TimelineSection() {
     }
   };
 
-  // 2. Sauvegarder uniquement la partie de l'équipe ciblée
   const handleSaveTrack = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTrack) return;
@@ -114,7 +122,6 @@ export default function TimelineSection() {
     }
   };
 
-  // Groupement par mois
   const groupedEvents = events.reduce((acc, event) => {
     if (!acc[event.monthGroup]) acc[event.monthGroup] = [];
     acc[event.monthGroup].push(event);
@@ -146,7 +153,7 @@ export default function TimelineSection() {
         </button>
       </header>
 
-      {/* FORMULAIRE D'AJOUT D'UNE NOUVELLE SEMAINE GLOBALE */}
+      {/* FORMULAIRE D'AJOUT */}
       {isEditing && (
         <form onSubmit={handleAddWeek} className="mb-8 p-6 bg-desert-paper border border-desert-accent shadow-sm rounded-sm animate-[fadeIn_0.2s_ease-in-out]">
           <h3 className="font-serif font-bold text-desert-accent mb-4 border-b border-desert-border pb-2">➕ Ajouter une action au calendrier</h3>
@@ -158,7 +165,7 @@ export default function TimelineSection() {
         </form>
       )}
 
-      {/* TABLEAU CHRONOGRAMME */}
+      {/* TABLEAU */}
       <div className="bg-desert-paper border border-desert-border rounded-sm overflow-x-auto shadow-sm">
         <table className="w-full text-left bureaucratic-table">
           <thead className="bg-desert-sidebar">
@@ -175,33 +182,26 @@ export default function TimelineSection() {
             ) : (
               Object.entries(groupedEvents).map(([month, monthEvents]) => (
                 <React.Fragment key={month}>
-                  {/* En-tête du Mois */}
                   <tr className="bg-desert-bg/50 border-b border-desert-border font-bold">
                     <td colSpan={isEditing ? 4 : 3} className="p-2 text-center uppercase tracking-widest text-desert-accent text-xs">
                       {month}
                     </td>
                   </tr>
                   
-                  {/* Les Semaines (Lignes) */}
                   {monthEvents.map((event, index) => {
                     const isEnCours = event.adminStatus === "En cours" || event.techStatus === "En cours";
                     const isPlanifie = event.adminStatus === "Planifié" && event.techStatus === "Planifié";
-                    
-                    // 🚀 LE CODE MAGIQUE EST ICI : On vérifie si la ligne du dessus est la même semaine
                     const isSameAsPreviousWeek = index > 0 && event.weekLabel === monthEvents[index - 1].weekLabel;
                     
                     return (
                       <tr key={event.id} className="group hover:bg-desert-sidebar/10 transition-colors">
                         
-                        {/* COLONNE : NOM DE LA SEMAINE */}
-                        {/* 🎨 Si c'est la même semaine, on cache les bordures du haut et on n'écrit pas le texte ! */}
                         <td className={`p-4 border-b border-desert-border font-serif ${isEnCours && !isSameAsPreviousWeek ? 'bg-desert-progress/5 border-l-4 border-l-desert-progress' : ''} ${isPlanifie ? 'text-desert-todo' : ''}`}>
                           {!isSameAsPreviousWeek && (
                             <p className="font-bold">{event.weekLabel}</p>
                           )}
                         </td>
                         
-                        {/* 🛡️ COLONNE : TRACK ADMINISTRATIF */}
                         <td className="p-4 border-l border-b border-desert-border relative group/admin">
                           <div className="flex justify-between items-start gap-4">
                             <div>
@@ -216,7 +216,6 @@ export default function TimelineSection() {
                           </div>
                         </td>
                         
-                        {/* 💻 COLONNE : TRACK TECHNIQUE */}
                         <td className="p-4 border-l border-b border-desert-border relative group/tech">
                           <div className="flex justify-between items-start gap-4">
                             <div>
@@ -231,10 +230,10 @@ export default function TimelineSection() {
                           </div>
                         </td>
                         
-                        {/* COLONNE : SUPPRESSION */}
                         {isEditing && (
                           <td className="p-4 border-l border-b border-desert-border text-center">
-                            <button onClick={() => handleDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Supprimer la ligne">
+                            {/* 🚀 CHANGEMENT : On ouvre notre popup au lieu de lancer le window.confirm */}
+                            <button onClick={() => setEventToDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Supprimer la ligne">
                               <i className="fa-solid fa-trash"></i>
                             </button>
                           </td>
@@ -250,14 +249,13 @@ export default function TimelineSection() {
         </table>
       </div>
 
-      {/* 🌟 LE SYSTÈME DE POPUP POUR L'ÉDITION SÉPARÉE (MODAL) */}
+      {/* 🌟 LE SYSTÈME DE POPUP POUR L'ÉDITION */}
       {editingTrack && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
           <div className="bg-desert-paper border-2 border-desert-heading w-full max-w-md p-6 rounded-sm shadow-2xl relative">
             <button onClick={() => setEditingTrack(null)} className="absolute top-4 right-4 text-desert-todo hover:text-red-500 text-xl">
               <i className="fa-solid fa-times"></i>
             </button>
-            
             <h3 className="font-serif text-xl font-bold text-desert-heading mb-1">
               {editingTrack.type === 'admin' ? "🛡️ Équipe Administrative" : "💻 Équipe Technique"}
             </h3>
@@ -295,6 +293,38 @@ export default function TimelineSection() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🚨 NOUVEAU : NOTRE MODAL DE CONFIRMATION DE SUPPRESSION */}
+      {eventToDelete && (
+        <div className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
+          <div className="bg-white border-2 border-red-500 w-full max-w-md p-6 rounded-sm shadow-2xl relative">
+            <div className="flex items-center gap-4 mb-2">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-500 text-xl shrink-0">
+                <i className="fa-solid fa-triangle-exclamation"></i>
+              </div>
+              <div>
+                <h3 className="font-serif text-xl font-bold text-gray-800">Confirmer la suppression</h3>
+                <p className="text-sm text-gray-500 mt-1">Êtes-vous sûr de vouloir supprimer cette ligne du chronogramme ? Cette action est irréversible.</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button 
+                onClick={() => setEventToDelete(null)} 
+                className="flex-1 py-2 bg-gray-100 text-gray-600 text-sm font-bold uppercase tracking-wider rounded-sm hover:bg-gray-200 transition-colors"
+              >
+                Annuler
+              </button>
+              <button 
+                onClick={confirmDelete} 
+                className="flex-1 py-2 bg-red-500 text-white text-sm font-bold uppercase tracking-wider rounded-sm hover:bg-red-600 transition-colors shadow-sm"
+              >
+                Oui, Supprimer
+              </button>
+            </div>
           </div>
         </div>
       )}
