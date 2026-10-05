@@ -3,21 +3,23 @@
 import { useState, useEffect } from "react";
 import { api } from "../services/api.service"; 
 
-// Typage complet avec les champs "Popup"
-type DashboardStats = {
-  goal: string;
-  advance1Title: string;
-  advance1Desc: string;
-  advance1Popup: string;
-  advance2Title: string;
-  advance2Desc: string;
-  advance2Popup: string;
-  advance3Title: string;
-  advance3Desc: string;
-  advance3Popup: string;
+// 1. Typage strict de NOS AVANCÉES DYNAMIQUES
+type AdvanceType = "DONE" | "IN_PROGRESS" | "AUDIT";
+
+type AdvanceItem = {
+  id: string; // Utile pour React (Key) et pour cibler la suppression
+  type: AdvanceType;
+  title: string;
+  desc: string;
+  popup: string;
 };
 
-// Typage strict pour le chronogramme
+// Typage du Dashboard
+type DashboardStats = {
+  goal: string;
+  advances: AdvanceItem[]; // 👈 Le fameux tableau JSON illimité !
+};
+
 type TimelineEvent = {
   monthGroup: string;
   weekLabel: string;
@@ -28,24 +30,14 @@ type TimelineEvent = {
 export default function DashboardSection() {
   const [stats, setStats] = useState<DashboardStats>({
     goal: "",
-    advance1Title: "", advance1Desc: "", advance1Popup: "",
-    advance2Title: "", advance2Desc: "", advance2Popup: "",
-    advance3Title: "", advance3Desc: "", advance3Popup: "",
+    advances: [], // Vide par défaut
   });
   
-  // Regroupement des états dynamiques
-  const [dynamicData, setDynamicData] = useState({
-    progress: 0,
-    phase: "Analyse en cours...",
-    daysLeft: 0
-  });
-
+  const [dynamicData, setDynamicData] = useState({ progress: 0, phase: "Analyse en cours...", daysLeft: 0 });
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
   const [activePopup, setActivePopup] = useState<{title: string, content: string} | null>(null);
 
-  // 🛡️ CORRECTION 1 : La fonction de chargement est DANS le useEffect
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
@@ -57,23 +49,18 @@ export default function DashboardSection() {
         if (dashData) {
           setStats({
             goal: dashData.goal || "",
-            advance1Title: dashData.advance1Title || "", advance1Desc: dashData.advance1Desc || "", advance1Popup: dashData.advance1Popup || "",
-            advance2Title: dashData.advance2Title || "", advance2Desc: dashData.advance2Desc || "", advance2Popup: dashData.advance2Popup || "",
-            advance3Title: dashData.advance3Title || "", advance3Desc: dashData.advance3Desc || "", advance3Popup: dashData.advance3Popup || "",
+            // On s'assure que c'est bien un tableau (par sécurité)
+            advances: Array.isArray(dashData.advances) ? dashData.advances : [],
           });
         }
 
-        // CALCUL INTELLIGENT
+        // CALCUL INTELLIGENT DU CHRONOGRAMME
         if (timelineData && timelineData.length > 0) {
-          let totalTasks = 0;
-          let completedTasks = 0;
-          let currentPhaseFound = false;
-          let calculatedPhase = "Analyse en cours...";
+          let totalTasks = 0, completedTasks = 0;
+          let currentPhaseFound = false, calculatedPhase = "Analyse en cours...";
 
-          // 🛡️ Forçage du type pour éviter l'erreur "any"
           (timelineData as TimelineEvent[]).forEach((event) => {
             totalTasks += 2; 
-            
             if (event.adminStatus === "Terminé") completedTasks++;
             if (event.techStatus === "Terminé") completedTasks++;
 
@@ -83,49 +70,69 @@ export default function DashboardSection() {
             }
           });
 
-          if (!currentPhaseFound) {
-            if (completedTasks === totalTasks) calculatedPhase = "Projet Terminé ! 🎉";
-            else calculatedPhase = "En attente de démarrage";
-          }
-
-          const calculatedProgress = Math.round((completedTasks / totalTasks) * 100);
-          const totalDays = timelineData.length * 7;
-          const daysPassed = Math.floor((completedTasks / 2) * 7);
-          const calculatedDaysLeft = totalDays - daysPassed;
+          if (!currentPhaseFound) calculatedPhase = completedTasks === totalTasks ? "Projet Terminé ! 🎉" : "En attente de démarrage";
 
           setDynamicData({
-            progress: calculatedProgress,
+            progress: Math.round((completedTasks / totalTasks) * 100),
             phase: calculatedPhase,
-            daysLeft: calculatedDaysLeft
+            daysLeft: (timelineData.length * 7) - Math.floor((completedTasks / 2) * 7)
           });
         } else {
-          setDynamicData({
-            progress: 0,
-            phase: "Chronogramme vide",
-            daysLeft: 0
-          });
+          setDynamicData({ progress: 0, phase: "Chronogramme vide", daysLeft: 0 });
         }
 
       } catch (err) {
-        // 🛡️ CORRECTION 2 : Utilisation correcte de l'erreur catchée
-        console.error("Erreur de chargement API :", err);
+        console.error("Erreur de chargement :", err);
       } finally {
         setIsLoading(false); 
       }
     };
-
     loadDashboardData();
-  }, []); // Le tableau vide garantit un seul rendu au montage
+  }, []);
 
   const handleSave = async () => {
     try {
       await api.dashboard.update(stats);
       setIsEditing(false); 
     } catch (err) {
-      // 🛡️ CORRECTION 2 : Utilisation correcte de l'erreur catchée
       console.error("Erreur de sauvegarde :", err);
       alert("Erreur lors de la sauvegarde.");
     }
+  };
+
+  // ==========================================
+  // 🚀 FONCTIONS DE GESTION DU TABLEAU DYNAMIQUE
+  // ==========================================
+  const handleAddAdvance = () => {
+    setStats({
+      ...stats,
+      advances: [
+        ...stats.advances,
+        { id: Date.now().toString(), type: "DONE", title: "", desc: "", popup: "" } // Ajout au bout du tableau
+      ]
+    });
+  };
+
+  const handleUpdateAdvance = (id: string, field: keyof AdvanceItem, value: string) => {
+    setStats({
+      ...stats,
+      advances: stats.advances.map(adv => adv.id === id ? { ...adv, [field]: value } : adv)
+    });
+  };
+
+  const handleRemoveAdvance = (id: string) => {
+    setStats({
+      ...stats,
+      advances: stats.advances.filter(adv => adv.id !== id)
+    });
+  };
+
+  // Visuel dynamique selon le type choisi
+  const getIconForType = (type: AdvanceType) => {
+    if (type === "DONE") return <i className="fa-solid fa-check-circle text-desert-done mt-1"></i>;
+    if (type === "IN_PROGRESS") return <i className="fa-solid fa-pen-nib text-desert-progress mt-1"></i>;
+    if (type === "AUDIT") return <i className="fa-solid fa-shield-halved text-amber-600 mt-1"></i>;
+    return null;
   };
 
   if (isLoading) return <div className="p-10 text-center animate-pulse text-desert-todo font-serif">Analyse des données opérationnelles...</div>;
@@ -177,31 +184,39 @@ export default function DashboardSection() {
       </div>
 
       {isEditing ? (
-        /* ✏️ MODE ÉDITION DES TEXTES ET POPUPS */
+        /* ✏️ MODE ÉDITION DES AVANCÉES (DYNAMIQUE) */
         <div className="bg-desert-paper p-6 border-2 border-dashed border-desert-accent shadow-sm rounded-sm mb-8 animate-[fadeIn_0.2s_ease-in-out]">
-          <h3 className="font-serif font-bold text-lg text-desert-accent border-b border-desert-border pb-2 mb-4">Rédiger les Avancées</h3>
+          <h3 className="font-serif font-bold text-lg text-desert-accent border-b border-desert-border pb-2 mb-4">Gestion des Avancées Récentes</h3>
           <div className="space-y-6">
             
-            <div className="bg-desert-bg/50 p-4 border border-desert-border rounded-sm space-y-2">
-              <label className="text-xs font-bold text-desert-todo uppercase"><i className="fa-solid fa-check-circle mr-1"></i> Avancée 1 (Terminée)</label>
-              <input type="text" placeholder="Titre (ex: App Mobile)" value={stats.advance1Title} onChange={e => setStats({...stats, advance1Title: e.target.value})} className="w-full p-2 border border-desert-border font-bold text-sm focus:outline-none focus:border-desert-accent" />
-              <input type="text" placeholder="Résumé court" value={stats.advance1Desc} onChange={e => setStats({...stats, advance1Desc: e.target.value})} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" />
-              <textarea placeholder="Détails complets pour le Popup (Optionnel)" value={stats.advance1Popup} onChange={e => setStats({...stats, advance1Popup: e.target.value})} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" rows={3} />
-            </div>
-            
-            <div className="bg-desert-bg/50 p-4 border border-desert-border rounded-sm space-y-2">
-              <label className="text-xs font-bold text-desert-todo uppercase"><i className="fa-solid fa-pen-nib mr-1"></i> Avancée 2 (En cours)</label>
-              <input type="text" placeholder="Titre" value={stats.advance2Title} onChange={e => setStats({...stats, advance2Title: e.target.value})} className="w-full p-2 border border-desert-border font-bold text-sm focus:outline-none focus:border-desert-accent" />
-              <input type="text" placeholder="Résumé court" value={stats.advance2Desc} onChange={e => setStats({...stats, advance2Desc: e.target.value})} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" />
-              <textarea placeholder="Détails complets pour le Popup (Optionnel)" value={stats.advance2Popup} onChange={e => setStats({...stats, advance2Popup: e.target.value})} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" rows={3} />
-            </div>
-            
-            <div className="bg-desert-bg/50 p-4 border border-desert-border rounded-sm space-y-2">
-              <label className="text-xs font-bold text-desert-todo uppercase"><i className="fa-solid fa-shield-halved mr-1"></i> Avancée 3 (Audit/Tech)</label>
-              <input type="text" placeholder="Titre" value={stats.advance3Title} onChange={e => setStats({...stats, advance3Title: e.target.value})} className="w-full p-2 border border-desert-border font-bold text-sm focus:outline-none focus:border-desert-accent" />
-              <input type="text" placeholder="Résumé court" value={stats.advance3Desc} onChange={e => setStats({...stats, advance3Desc: e.target.value})} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" />
-              <textarea placeholder="Détails complets pour le Popup (Optionnel)" value={stats.advance3Popup} onChange={e => setStats({...stats, advance3Popup: e.target.value})} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" rows={3} />
-            </div>
+            {/* BOUCLE SUR LE TABLEAU D'AVANCÉES */}
+            {stats.advances.map((adv) => (
+              <div key={adv.id} className="bg-desert-bg/50 p-4 border border-desert-border rounded-sm space-y-3 relative group">
+                
+                {/* Bouton pour supprimer CE bloc précis */}
+                <button onClick={() => handleRemoveAdvance(adv.id)} className="absolute top-3 right-3 text-red-400 hover:text-red-600 transition-colors" title="Supprimer cette avancée">
+                  <i className="fa-solid fa-trash"></i>
+                </button>
+
+                <div className="w-1/2">
+                  <label className="text-xs font-bold text-desert-todo uppercase mb-1 block">Statut de l&rsquo;avancée</label>
+                  <select value={adv.type} onChange={e => handleUpdateAdvance(adv.id, "type", e.target.value as AdvanceType)} className="w-full p-2 border border-desert-border font-bold text-sm focus:outline-none focus:border-desert-accent">
+                    <option value="DONE">Terminée</option>
+                    <option value="IN_PROGRESS">En cours</option>
+                    <option value="AUDIT">Audit / Tech</option>
+                  </select>
+                </div>
+
+                <input type="text" placeholder="Titre (ex: Application Mobile)" value={adv.title} onChange={e => handleUpdateAdvance(adv.id, "title", e.target.value)} className="w-full p-2 border border-desert-border font-bold text-sm focus:outline-none focus:border-desert-accent" />
+                <input type="text" placeholder="Résumé court" value={adv.desc} onChange={e => handleUpdateAdvance(adv.id, "desc", e.target.value)} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" />
+                <textarea placeholder="Détails complets pour le Popup (Optionnel)" value={adv.popup} onChange={e => handleUpdateAdvance(adv.id, "popup", e.target.value)} className="w-full p-2 border border-desert-border text-sm focus:outline-none focus:border-desert-accent" rows={3} />
+              </div>
+            ))}
+
+            {/* BOUTON POUR AJOUTER UNE NOUVELLE AVANCÉE AU TABLEAU */}
+            <button onClick={handleAddAdvance} className="w-full py-3 bg-desert-sidebar text-desert-heading border border-dashed border-desert-border hover:bg-desert-border/50 font-bold uppercase text-xs tracking-widest transition-colors mt-4">
+              <i className="fa-solid fa-plus mr-2"></i> Ajouter une avancée
+            </button>
 
           </div>
         </div>
@@ -209,60 +224,28 @@ export default function DashboardSection() {
         /* 📖 AFFICHAGE DES AVANCÉES */
         <div className="bg-desert-paper p-6 border border-desert-border shadow-sm rounded-sm">
           <h3 className="font-serif font-bold text-desert-heading text-lg mb-4 border-b border-desert-border pb-2">Résumé des Avancées Récentes</h3>
-          <ul className="space-y-4 font-serif text-sm">
-            
-            {stats.advance1Title && (
-              <li className="flex items-start justify-between p-2 hover:bg-desert-bg/50 rounded-sm transition-colors group">
-                <div className="flex gap-3">
-                  <i className="fa-solid fa-check-circle text-desert-done mt-1"></i>
-                  <div>
-                    <p className="font-bold text-desert-heading">{stats.advance1Title}</p>
-                    <p className="text-desert-todo">{stats.advance1Desc}</p>
+          {stats.advances.length === 0 ? (
+            <p className="text-desert-todo italic text-sm text-center py-4">Aucune avancée enregistrée pour le moment.</p>
+          ) : (
+            <ul className="space-y-4 font-serif text-sm">
+              {stats.advances.map(adv => (
+                <li key={adv.id} className="flex items-start justify-between p-2 hover:bg-desert-bg/50 rounded-sm transition-colors group">
+                  <div className="flex gap-3">
+                    {getIconForType(adv.type)}
+                    <div>
+                      <p className="font-bold text-desert-heading">{adv.title || "Nouvelle avancée"}</p>
+                      <p className="text-desert-todo">{adv.desc}</p>
+                    </div>
                   </div>
-                </div>
-                {stats.advance1Popup && (
-                  <button onClick={() => setActivePopup({title: stats.advance1Title, content: stats.advance1Popup})} className="text-xs bg-desert-border/50 px-3 py-1 rounded-sm hover:bg-desert-accent hover:text-white transition-colors opacity-0 group-hover:opacity-100">
-                    Détails <i className="fa-solid fa-arrow-right ml-1"></i>
-                  </button>
-                )}
-              </li>
-            )}
-            
-            {stats.advance2Title && (
-              <li className="flex items-start justify-between p-2 hover:bg-desert-bg/50 rounded-sm transition-colors group">
-                <div className="flex gap-3">
-                  <i className="fa-solid fa-pen-nib text-desert-progress mt-1"></i>
-                  <div>
-                    <p className="font-bold text-desert-heading">{stats.advance2Title}</p>
-                    <p className="text-desert-todo">{stats.advance2Desc}</p>
-                  </div>
-                </div>
-                {stats.advance2Popup && (
-                  <button onClick={() => setActivePopup({title: stats.advance2Title, content: stats.advance2Popup})} className="text-xs bg-desert-border/50 px-3 py-1 rounded-sm hover:bg-desert-accent hover:text-white transition-colors opacity-0 group-hover:opacity-100">
-                    Détails <i className="fa-solid fa-arrow-right ml-1"></i>
-                  </button>
-                )}
-              </li>
-            )}
-            
-            {stats.advance3Title && (
-              <li className="flex items-start justify-between p-2 hover:bg-desert-bg/50 rounded-sm transition-colors group">
-                <div className="flex gap-3">
-                  <i className="fa-solid fa-shield-halved text-desert-progress mt-1"></i>
-                  <div>
-                    <p className="font-bold text-desert-heading">{stats.advance3Title}</p>
-                    <p className="text-desert-todo">{stats.advance3Desc}</p>
-                  </div>
-                </div>
-                {stats.advance3Popup && (
-                  <button onClick={() => setActivePopup({title: stats.advance3Title, content: stats.advance3Popup})} className="text-xs bg-desert-border/50 px-3 py-1 rounded-sm hover:bg-desert-accent hover:text-white transition-colors opacity-0 group-hover:opacity-100">
-                    Détails <i className="fa-solid fa-arrow-right ml-1"></i>
-                  </button>
-                )}
-              </li>
-            )}
-
-          </ul>
+                  {adv.popup && (
+                    <button onClick={() => setActivePopup({title: adv.title, content: adv.popup})} className="text-xs bg-desert-border/50 px-3 py-1 rounded-sm hover:bg-desert-accent hover:text-white transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                      Détails <i className="fa-solid fa-arrow-right ml-1"></i>
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

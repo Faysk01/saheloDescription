@@ -46,7 +46,7 @@ export const api = {
   // 📊 1. MODULE DASHBOARD
   dashboard: {
     get: () => fetchWrapper(`${API_URL}/api/dashboard`),
-    // Remplacement de (data: any) par le type générique <T>(data: T)
+    // Grâce au générique <T>, cette fonction accepte automatiquement notre nouveau tableau JSON "advances" !
     update: <T>(data: T) => fetchWrapper(`${API_URL}/api/dashboard`, {
       method: 'PUT',
       body: JSON.stringify(data)
@@ -72,7 +72,6 @@ export const api = {
   // 💰 3. MODULE BUDGET & STATUTS
   budget: {
     getAll: () => fetchWrapper(`${API_URL}/api/budget`),
-    // Utilisation du générique <T>
     create: <T>(data: T) => fetchWrapper(`${API_URL}/api/budget`, {
       method: 'POST',
       body: JSON.stringify(data)
@@ -85,7 +84,6 @@ export const api = {
   // 🤝 4. MODULE PITCH INVESTISSEURS
   pitch: {
     get: () => fetchWrapper(`${API_URL}/api/pitch`),
-    // Utilisation du générique <T>
     update: <T>(data: T) => fetchWrapper(`${API_URL}/api/pitch`, {
       method: 'PUT',
       body: JSON.stringify(data)
@@ -95,7 +93,6 @@ export const api = {
   // 📅 5. MODULE CHRONOGRAMME D'EXÉCUTION
   timeline: {
     getAll: () => fetchWrapper(`${API_URL}/api/timeline`),
-    // Utilisation du générique <T>
     create: <T>(data: T) => fetchWrapper(`${API_URL}/api/timeline`, {
       method: 'POST',
       body: JSON.stringify(data)
