@@ -122,10 +122,9 @@ export default function TimelineSection() {
   };
 
   // ==========================================
-  // 🚀 NOUVEAU : LOGIQUE DE TRI INTELLIGENT
+  // 🚀 ALGORITHME DE TRI 100% INFAILLIBLE
   // ==========================================
   
-  // 1. On donne un poids au statut (Planifié = 1 (en haut), Terminé = 3 (en bas))
   const getStatusPriority = (status: string) => {
     if (status === "Planifié") return 1;
     if (status === "En cours") return 2;
@@ -133,35 +132,53 @@ export default function TimelineSection() {
     return 4;
   };
 
-  // 2. On calcule la priorité de la ligne (On prend le statut le plus urgent des deux colonnes)
   const getRowPriority = (event: TimelineEvent) => {
     const adminPrio = getStatusPriority(event.adminStatus);
     const techPrio = getStatusPriority(event.techStatus);
-    return Math.min(adminPrio, techPrio); // La tâche remonte si au moins un côté est "Planifié"
+    return Math.min(adminPrio, techPrio); 
   };
 
-  // 3. On groupe par mois
+  // ÉTAPE 1: Regrouper par Mois
   const groupedEvents = events.reduce((acc, event) => {
     if (!acc[event.monthGroup]) acc[event.monthGroup] = [];
     acc[event.monthGroup].push(event);
     return acc;
   }, {} as Record<string, TimelineEvent[]>);
 
-  // 4. On trie chaque mois !
+  // ÉTAPE 2: Organiser proprement l'intérieur des mois
   Object.keys(groupedEvents).forEach(month => {
-    groupedEvents[month].sort((a, b) => {
-      // S'ils sont dans la MÊME SEMAINE (ex: Semaine 1)
-      if (a.weekLabel === b.weekLabel) {
-        // On trie par statut (Planifié -> En cours -> Terminé)
-        return getRowPriority(a) - getRowPriority(b);
-      }
-      // S'ils ne sont PAS dans la même semaine, on respecte l'ordre chronologique des semaines
-      return a.orderIndex - b.orderIndex;
+    const monthEvents = groupedEvents[month];
+
+    // On regroupe d'abord les tâches par "Semaine" exacte
+    const weeksMap = monthEvents.reduce((acc, event) => {
+      if (!acc[event.weekLabel]) acc[event.weekLabel] = [];
+      acc[event.weekLabel].push(event);
+      return acc;
+    }, {} as Record<string, TimelineEvent[]>);
+
+    // Pour chaque semaine, on trie ses propres lignes par STATUT
+    const sortedWeeks = Object.keys(weeksMap).map(weekName => {
+      const weekEvents = weeksMap[weekName];
+      
+      // Tri magique de la semaine : Planifié -> En cours -> Terminé
+      weekEvents.sort((a, b) => getRowPriority(a) - getRowPriority(b));
+      
+      return {
+        weekName,
+        events: weekEvents,
+        minOrderIndex: Math.min(...weekEvents.map(e => e.orderIndex)) // Pour l'ordre chronologique des semaines
+      };
     });
+
+    // ÉTAPE 3: Trier les semaines entre elles (Semaine 1 avant Semaine 2)
+    sortedWeeks.sort((a, b) => a.minOrderIndex - b.minOrderIndex);
+
+    // ÉTAPE 4: Aplatir le tout pour l'affichage final parfait
+    groupedEvents[month] = sortedWeeks.flatMap(w => w.events);
   });
 
   const getBadge = (status: string) => {
-    if (status === "Terminé") return <span className="inline-block px-2 py-1 bg-desert-done/20 text-desert-done text-[10px] uppercase font-bold mb-2 border border-desert-done/30">Terminé</span>;
+    if (status === "Terminé") return <span className="inline-block px-2 py-1 bg-desert-done/20 text-desert-done text-[10px] uppercase font-bold mb-2 border border-desert-done/30 shadow-sm">Terminé</span>;
     if (status === "En cours") return <span className="inline-block px-2 py-1 bg-desert-progress text-white text-[10px] uppercase font-bold mb-2 shadow-sm">En cours</span>;
     return <span className="inline-block px-2 py-1 bg-desert-todo text-white text-[10px] uppercase font-bold mb-2 shadow-sm">Planifié</span>; 
   };
@@ -177,8 +194,8 @@ export default function TimelineSection() {
         </div>
         <button 
           onClick={() => setIsEditing(!isEditing)}
-          className={`px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-colors ${
-            isEditing ? 'bg-desert-done text-white' : 'bg-desert-heading text-white hover:bg-desert-accent'
+          className={`px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-colors shadow-sm ${
+            isEditing ? 'bg-desert-done text-white hover:bg-desert-done/90' : 'bg-desert-heading text-white hover:bg-desert-accent'
           }`}
         >
           {isEditing ? "Fermer le mode Édition" : <><i className="fa-solid fa-pen mr-2"></i> Activer l&rsquo;Édition</>}
@@ -193,11 +210,11 @@ export default function TimelineSection() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="text-xs uppercase font-bold text-desert-todo">Mois (Groupe)</label>
-              <input type="text" value={formData.monthGroup} onChange={e => setFormData({...formData, monthGroup: e.target.value})} className="w-full p-2 border border-desert-border mt-1" required />
+              <input type="text" value={formData.monthGroup} onChange={e => setFormData({...formData, monthGroup: e.target.value})} className="w-full p-2 border border-desert-border mt-1 rounded-sm focus:outline-none focus:border-desert-accent" required />
             </div>
             <div>
               <label className="text-xs uppercase font-bold text-desert-todo">Période (ex: Semaine 1)</label>
-              <input type="text" value={formData.weekLabel} onChange={e => setFormData({...formData, weekLabel: e.target.value})} className="w-full p-2 border border-desert-border mt-1" required />
+              <input type="text" value={formData.weekLabel} onChange={e => setFormData({...formData, weekLabel: e.target.value})} className="w-full p-2 border border-desert-border mt-1 rounded-sm focus:outline-none focus:border-desert-accent" required />
             </div>
           </div>
 
@@ -207,7 +224,7 @@ export default function TimelineSection() {
               <textarea 
                 value={formData.adminText} 
                 onChange={e => setFormData({...formData, adminText: e.target.value})} 
-                className="w-full p-2 border border-desert-border mt-1 text-sm font-serif" 
+                className="w-full p-2 border border-desert-border mt-1 text-sm font-serif rounded-sm focus:outline-none focus:border-desert-accent" 
                 rows={2} 
                 placeholder="Ex: Rédaction des statuts..." 
               />
@@ -217,14 +234,14 @@ export default function TimelineSection() {
               <textarea 
                 value={formData.techText} 
                 onChange={e => setFormData({...formData, techText: e.target.value})} 
-                className="w-full p-2 border border-desert-border mt-1 text-sm font-serif" 
+                className="w-full p-2 border border-desert-border mt-1 text-sm font-serif rounded-sm focus:outline-none focus:border-desert-accent" 
                 rows={2} 
                 placeholder="Ex: Configuration serveur..." 
               />
             </div>
           </div>
 
-          <button type="submit" className="bg-desert-accent text-white px-6 py-2 rounded-sm font-bold text-sm w-full uppercase tracking-widest hover:bg-desert-heading transition-colors">
+          <button type="submit" className="bg-desert-accent text-white px-6 py-2 rounded-sm font-bold text-sm w-full uppercase tracking-widest hover:bg-desert-heading transition-colors shadow-sm">
             Créer la ligne (Statut: Planifié)
           </button>
         </form>
@@ -315,7 +332,7 @@ export default function TimelineSection() {
 
       {/* MODAL D'ÉDITION */}
       {editingTrack && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
+        <div className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
           <div className="bg-desert-paper border-2 border-desert-heading w-full max-w-md p-6 rounded-sm shadow-2xl relative">
             <button onClick={() => setEditingTrack(null)} className="absolute top-4 right-4 text-desert-todo hover:text-red-500 text-xl">
               <i className="fa-solid fa-times"></i>
@@ -352,7 +369,7 @@ export default function TimelineSection() {
                 <button type="button" onClick={() => setEditingTrack(null)} className="flex-1 py-2 text-desert-text text-sm font-bold uppercase hover:bg-desert-sidebar border border-desert-border rounded-sm transition-colors">
                   Annuler
                 </button>
-                <button type="submit" className={`flex-1 py-2 text-white text-sm font-bold uppercase rounded-sm transition-colors ${editingTrack.type === 'admin' ? 'bg-desert-accent hover:bg-desert-heading' : 'bg-desert-progress hover:bg-desert-progress/80'}`}>
+                <button type="submit" className={`flex-1 py-2 text-white text-sm font-bold uppercase rounded-sm transition-colors shadow-sm ${editingTrack.type === 'admin' ? 'bg-desert-accent hover:bg-desert-heading' : 'bg-desert-progress hover:bg-desert-progress/80'}`}>
                   Mettre à jour
                 </button>
               </div>
@@ -363,7 +380,7 @@ export default function TimelineSection() {
 
       {/* MODAL DE CONFIRMATION DE SUPPRESSION */}
       {eventToDelete && (
-        <div className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
+        <div className="fixed inset-0 bg-black/60 z-70 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
           <div className="bg-white border-2 border-red-500 w-full max-w-md p-6 rounded-sm shadow-2xl relative">
             <div className="flex items-center gap-4 mb-2">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-500 text-xl shrink-0">
