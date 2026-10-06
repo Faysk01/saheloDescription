@@ -25,8 +25,7 @@ export default function TimelineSection() {
     adminText: "", 
     adminStatus: "Planifié", 
     techText: "", 
-    techStatus: "Planifié",
-    orderIndex: 1
+    techStatus: "Planifié"
   });
 
   const [editingTrack, setEditingTrack] = useState<{ id: string, type: 'admin' | 'tech', title: string } | null>(null);
@@ -50,15 +49,25 @@ export default function TimelineSection() {
   const handleAddWeek = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.timeline.create(formData);
+      // 🚀 CORRECTION 1 : On s'assure que la nouvelle ligne va TOUJOURS en bas
+      const maxOrderIndex = events.length > 0 
+        ? Math.max(...events.map(e => e.orderIndex || 0)) 
+        : 0;
+      
+      const payloadToCreate = { 
+        ...formData, 
+        orderIndex: maxOrderIndex + 1 
+      };
+
+      await api.timeline.create(payloadToCreate);
       const updatedData = await api.timeline.getAll();
       setEvents(updatedData as TimelineEvent[]);
       
+      // On vide juste les textes, on garde le mois et la semaine pour aller plus vite
       setFormData({ 
         ...formData, 
         adminText: "", 
-        techText: "", 
-        orderIndex: formData.orderIndex + 1 
+        techText: ""
       });
     } catch (err) {
       console.error("Erreur lors de l'ajout :", err);
@@ -122,59 +131,52 @@ export default function TimelineSection() {
   };
 
   // ==========================================
-  // 🚀 ALGORITHME DE TRI 100% INFAILLIBLE
+  // 🚀 CORRECTION 2 : ALGORITHME DE TRI PARFAIT
   // ==========================================
   
+  // 1. Définition stricte des priorités
   const getStatusPriority = (status: string) => {
-    if (status === "Planifié") return 1;
-    if (status === "En cours") return 2;
-    if (status === "Terminé") return 3;
+    if (status === "Planifié") return 1; // En haut
+    if (status === "En cours") return 2; // Au milieu
+    if (status === "Terminé") return 3;  // En bas
     return 4;
   };
 
+  // 2. Priorité de la ligne entière
   const getRowPriority = (event: TimelineEvent) => {
-    const adminPrio = getStatusPriority(event.adminStatus);
-    const techPrio = getStatusPriority(event.techStatus);
-    return Math.min(adminPrio, techPrio); 
+    return Math.min(getStatusPriority(event.adminStatus), getStatusPriority(event.techStatus));
   };
 
-  // ÉTAPE 1: Regrouper par Mois
-  const groupedEvents = events.reduce((acc, event) => {
-    if (!acc[event.monthGroup]) acc[event.monthGroup] = [];
-    acc[event.monthGroup].push(event);
-    return acc;
-  }, {} as Record<string, TimelineEvent[]>);
+  // 3. On trie D'ABORD par ordre de création (les plus récents en bas)
+  const chronologicallySortedEvents = [...events].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
-  // ÉTAPE 2: Organiser proprement l'intérieur des mois
-  Object.keys(groupedEvents).forEach(month => {
-    const monthEvents = groupedEvents[month];
+  // 4. On extrait les mois sans casser leur ordre d'apparition
+  const monthGroups = Array.from(new Set(chronologicallySortedEvents.map(e => e.monthGroup)));
 
-    // On regroupe d'abord les tâches par "Semaine" exacte
-    const weeksMap = monthEvents.reduce((acc, event) => {
-      if (!acc[event.weekLabel]) acc[event.weekLabel] = [];
-      acc[event.weekLabel].push(event);
-      return acc;
-    }, {} as Record<string, TimelineEvent[]>);
+  // 5. On construit la donnée finale parfaitement ordonnée
+  const renderData = monthGroups.map(month => {
+    const monthEvents = chronologicallySortedEvents.filter(e => e.monthGroup === month);
+    const weekLabels = Array.from(new Set(monthEvents.map(e => e.weekLabel)));
 
-    // Pour chaque semaine, on trie ses propres lignes par STATUT
-    const sortedWeeks = Object.keys(weeksMap).map(weekName => {
-      const weekEvents = weeksMap[weekName];
-      
-      // Tri magique de la semaine : Planifié -> En cours -> Terminé
-      weekEvents.sort((a, b) => getRowPriority(a) - getRowPriority(b));
-      
-      return {
-        weekName,
-        events: weekEvents,
-        minOrderIndex: Math.min(...weekEvents.map(e => e.orderIndex)) // Pour l'ordre chronologique des semaines
-      };
+    const weeks = weekLabels.map(week => {
+      const weekEvents = monthEvents.filter(e => e.weekLabel === week);
+
+      // LE TRI MAGIQUE : Seulement à l'intérieur de la même semaine !
+      weekEvents.sort((a, b) => {
+         const prioA = getRowPriority(a);
+         const prioB = getRowPriority(b);
+         
+         if (prioA !== prioB) {
+           return prioA - prioB; // Planifié(1) passera toujours avant Terminé(3)
+         }
+         // Si elles ont le même statut, on respecte l'ordre dans lequel elles ont été ajoutées
+         return (a.orderIndex || 0) - (b.orderIndex || 0);
+      });
+
+      return { week, events: weekEvents };
     });
 
-    // ÉTAPE 3: Trier les semaines entre elles (Semaine 1 avant Semaine 2)
-    sortedWeeks.sort((a, b) => a.minOrderIndex - b.minOrderIndex);
-
-    // ÉTAPE 4: Aplatir le tout pour l'affichage final parfait
-    groupedEvents[month] = sortedWeeks.flatMap(w => w.events);
+    return { month, weeks };
   });
 
   const getBadge = (status: string) => {
@@ -259,70 +261,80 @@ export default function TimelineSection() {
             </tr>
           </thead>
           <tbody className="text-sm">
-            {Object.keys(groupedEvents).length === 0 ? (
+            {renderData.length === 0 ? (
               <tr><td colSpan={isEditing ? 4 : 3} className="p-6 text-center text-desert-todo italic">Aucune donnée dans le chronogramme.</td></tr>
             ) : (
-              Object.entries(groupedEvents).map(([month, monthEvents]) => (
-                <React.Fragment key={month}>
+              renderData.map((monthData) => (
+                <React.Fragment key={monthData.month}>
+                  {/* Ligne de Titre du Mois */}
                   <tr className="bg-desert-bg/50 border-b border-desert-border font-bold">
                     <td colSpan={isEditing ? 4 : 3} className="p-2 text-center uppercase tracking-widest text-desert-accent text-xs">
-                      {month}
+                      {monthData.month}
                     </td>
                   </tr>
                   
-                  {monthEvents.map((event, index) => {
-                    const isEnCours = event.adminStatus === "En cours" || event.techStatus === "En cours";
-                    const isPlanifie = event.adminStatus === "Planifié" && event.techStatus === "Planifié";
-                    const isSameAsPreviousWeek = index > 0 && event.weekLabel === monthEvents[index - 1].weekLabel;
-                    
-                    return (
-                      <tr key={event.id} className="group hover:bg-desert-sidebar/10 transition-colors">
+                  {/* Itération sur les Semaines */}
+                  {monthData.weeks.map((weekData) => (
+                    <React.Fragment key={weekData.week}>
+                      
+                      {/* Itération sur les Actions d'une Semaine */}
+                      {weekData.events.map((event, index) => {
+                        const isEnCours = event.adminStatus === "En cours" || event.techStatus === "En cours";
+                        const isPlanifie = event.adminStatus === "Planifié" && event.techStatus === "Planifié";
                         
-                        <td className={`p-4 border-b border-desert-border font-serif ${isEnCours && !isSameAsPreviousWeek ? 'bg-desert-progress/5 border-l-4 border-l-desert-progress' : ''} ${isPlanifie ? 'text-desert-todo' : ''}`}>
-                          {!isSameAsPreviousWeek && (
-                            <p className="font-bold">{event.weekLabel}</p>
-                          )}
-                        </td>
+                        // L'astuce est ici : Si l'index est > 0, on sait que c'est la même semaine !
+                        const isSameAsPreviousWeek = index > 0;
                         
-                        <td className="p-4 border-l border-b border-desert-border relative group/admin">
-                          <div className="flex justify-between items-start gap-4">
-                            <div>
-                              {getBadge(event.adminStatus)}
-                              <p className="text-desert-heading">{event.adminText || <span className="text-desert-todo italic text-xs">Aucune action prévue</span>}</p>
-                            </div>
+                        return (
+                          <tr key={event.id} className="group hover:bg-desert-sidebar/10 transition-colors">
+                            
+                            <td className={`p-4 border-b border-desert-border font-serif ${isEnCours && !isSameAsPreviousWeek ? 'bg-desert-progress/5 border-l-4 border-l-desert-progress' : ''} ${isPlanifie ? 'text-desert-todo' : ''}`}>
+                              {!isSameAsPreviousWeek && (
+                                <p className="font-bold">{event.weekLabel}</p>
+                              )}
+                            </td>
+                            
+                            <td className="p-4 border-l border-b border-desert-border relative group/admin">
+                              <div className="flex justify-between items-start gap-4">
+                                <div>
+                                  {getBadge(event.adminStatus)}
+                                  <p className="text-desert-heading">{event.adminText || <span className="text-desert-todo italic text-xs">Aucune action prévue</span>}</p>
+                                </div>
+                                {isEditing && (
+                                  <button onClick={() => openTrackEditor(event, 'admin')} className="text-desert-todo hover:text-desert-accent transition-colors opacity-0 group-hover/admin:opacity-100 shrink-0 bg-white border border-desert-border px-2 py-1 rounded-sm shadow-sm" title="Gérer l'Administration">
+                                    <i className="fa-solid fa-pen text-xs"></i>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            
+                            <td className="p-4 border-l border-b border-desert-border relative group/tech">
+                              <div className="flex justify-between items-start gap-4">
+                                <div>
+                                  {getBadge(event.techStatus)}
+                                  <p className="text-desert-heading">{event.techText || <span className="text-desert-todo italic text-xs">Aucune action prévue</span>}</p>
+                                </div>
+                                {isEditing && (
+                                  <button onClick={() => openTrackEditor(event, 'tech')} className="text-desert-todo hover:text-desert-progress transition-colors opacity-0 group-hover/tech:opacity-100 shrink-0 bg-white border border-desert-border px-2 py-1 rounded-sm shadow-sm" title="Gérer la Technique">
+                                    <i className="fa-solid fa-pen text-xs"></i>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            
                             {isEditing && (
-                              <button onClick={() => openTrackEditor(event, 'admin')} className="text-desert-todo hover:text-desert-accent transition-colors opacity-0 group-hover/admin:opacity-100 shrink-0 bg-white border border-desert-border px-2 py-1 rounded-sm shadow-sm" title="Gérer l'Administration">
-                                <i className="fa-solid fa-pen text-xs"></i>
-                              </button>
+                              <td className="p-4 border-l border-b border-desert-border text-center">
+                                <button onClick={() => setEventToDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Supprimer la ligne">
+                                  <i className="fa-solid fa-trash"></i>
+                                </button>
+                              </td>
                             )}
-                          </div>
-                        </td>
-                        
-                        <td className="p-4 border-l border-b border-desert-border relative group/tech">
-                          <div className="flex justify-between items-start gap-4">
-                            <div>
-                              {getBadge(event.techStatus)}
-                              <p className="text-desert-heading">{event.techText || <span className="text-desert-todo italic text-xs">Aucune action prévue</span>}</p>
-                            </div>
-                            {isEditing && (
-                              <button onClick={() => openTrackEditor(event, 'tech')} className="text-desert-todo hover:text-desert-progress transition-colors opacity-0 group-hover/tech:opacity-100 shrink-0 bg-white border border-desert-border px-2 py-1 rounded-sm shadow-sm" title="Gérer la Technique">
-                                <i className="fa-solid fa-pen text-xs"></i>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        
-                        {isEditing && (
-                          <td className="p-4 border-l border-b border-desert-border text-center">
-                            <button onClick={() => setEventToDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Supprimer la ligne">
-                              <i className="fa-solid fa-trash"></i>
-                            </button>
-                          </td>
-                        )}
 
-                      </tr>
-                    );
-                  })}
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
                 </React.Fragment>
               ))
             )}
