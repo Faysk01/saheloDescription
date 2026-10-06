@@ -6,7 +6,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 // ==========================================
-// 🛠️ FONCTION UTILITAIRE (FETCH WRAPPER)
+// 🛠️️ FONCTION UTILITAIRE (FETCH WRAPPER)
 // ==========================================
 const fetchWrapper = async (url: string, options: RequestInit = {}) => {
   // 1. Centralisation et configuration des headers
@@ -46,7 +46,6 @@ export const api = {
   // 📊 1. MODULE DASHBOARD
   dashboard: {
     get: () => fetchWrapper(`${API_URL}/api/dashboard`),
-    // Grâce au générique <T>, cette fonction accepte automatiquement notre nouveau tableau JSON "advances" !
     update: <T>(data: T) => fetchWrapper(`${API_URL}/api/dashboard`, {
       method: 'PUT',
       body: JSON.stringify(data)
@@ -76,6 +75,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
+    
+    // 🚀 LA VOICI : La fonction update manquante pour le budget !
+    update: <T>(id: string, data: T) => fetchWrapper(`${API_URL}/api/budget/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
     delete: (id: string) => fetchWrapper(`${API_URL}/api/budget/${id}`, { 
       method: 'DELETE' 
     })
@@ -97,13 +103,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     }),
-    
-    // 🚀 NOUVELLE FONCTION AJOUTÉE ICI : Indispensable pour modifier le Track Admin ou Tech
     update: <T>(id: string, data: T) => fetchWrapper(`${API_URL}/api/timeline/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data)
     }),
-
     delete: (id: string) => fetchWrapper(`${API_URL}/api/timeline/${id}`, { 
       method: 'DELETE' 
     })

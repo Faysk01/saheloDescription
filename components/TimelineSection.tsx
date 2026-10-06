@@ -19,19 +19,18 @@ export default function TimelineSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Formulaire de CRÉATION d'une nouvelle ligne
   const [formData, setFormData] = useState({
-    monthGroup: "Mois 1 - Structuration", weekLabel: "Semaine 1",
-    adminText: "", adminStatus: "Planifié",
-    techText: "", techStatus: "Planifié",
+    monthGroup: "Mois 1 - Structuration", 
+    weekLabel: "Semaine 1",
+    adminText: "", 
+    adminStatus: "Planifié", 
+    techText: "", 
+    techStatus: "Planifié",
     orderIndex: 1
   });
 
-  // États pour l'édition SÉPARÉE (Track Admin vs Track Tech)
   const [editingTrack, setEditingTrack] = useState<{ id: string, type: 'admin' | 'tech', title: string } | null>(null);
   const [trackFormData, setTrackFormData] = useState({ text: "", status: "" });
-
-  // 🚀 NOUVEAU : État pour le popup de suppression personnalisé
   const [eventToDelete, setEventToDelete] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,31 +53,31 @@ export default function TimelineSection() {
       await api.timeline.create(formData);
       const updatedData = await api.timeline.getAll();
       setEvents(updatedData as TimelineEvent[]);
-      setFormData({ ...formData, adminText: "", techText: "", orderIndex: formData.orderIndex + 1 });
+      
+      setFormData({ 
+        ...formData, 
+        adminText: "", 
+        techText: "", 
+        orderIndex: formData.orderIndex + 1 
+      });
     } catch (err) {
       console.error("Erreur lors de l'ajout :", err);
       alert("Erreur lors de l'ajout de la ligne.");
     }
   };
 
-  // 🚀 NOUVEAU : La fonction de suppression qui utilise notre Popup
   const confirmDelete = async () => {
     if (!eventToDelete) return;
     
-    // On ferme d'abord le popup
     const idToDelete = eventToDelete;
     setEventToDelete(null);
 
     try {
-      // Optimistic UI : On retire visuellement la ligne tout de suite
       setEvents((prevEvents) => prevEvents.filter((e) => e.id !== idToDelete));
-      
-      // On envoie l'ordre de suppression au backend
       await api.timeline.delete(idToDelete);
     } catch (err) {
       console.error("Erreur lors de la suppression :", err);
       alert("Erreur lors de la suppression.");
-      // Rollback en cas d'erreur
       const updatedData = await api.timeline.getAll();
       setEvents(updatedData as TimelineEvent[]);
     }
@@ -122,11 +121,44 @@ export default function TimelineSection() {
     }
   };
 
+  // ==========================================
+  // 🚀 NOUVEAU : LOGIQUE DE TRI INTELLIGENT
+  // ==========================================
+  
+  // 1. On donne un poids au statut (Planifié = 1 (en haut), Terminé = 3 (en bas))
+  const getStatusPriority = (status: string) => {
+    if (status === "Planifié") return 1;
+    if (status === "En cours") return 2;
+    if (status === "Terminé") return 3;
+    return 4;
+  };
+
+  // 2. On calcule la priorité de la ligne (On prend le statut le plus urgent des deux colonnes)
+  const getRowPriority = (event: TimelineEvent) => {
+    const adminPrio = getStatusPriority(event.adminStatus);
+    const techPrio = getStatusPriority(event.techStatus);
+    return Math.min(adminPrio, techPrio); // La tâche remonte si au moins un côté est "Planifié"
+  };
+
+  // 3. On groupe par mois
   const groupedEvents = events.reduce((acc, event) => {
     if (!acc[event.monthGroup]) acc[event.monthGroup] = [];
     acc[event.monthGroup].push(event);
     return acc;
   }, {} as Record<string, TimelineEvent[]>);
+
+  // 4. On trie chaque mois !
+  Object.keys(groupedEvents).forEach(month => {
+    groupedEvents[month].sort((a, b) => {
+      // S'ils sont dans la MÊME SEMAINE (ex: Semaine 1)
+      if (a.weekLabel === b.weekLabel) {
+        // On trie par statut (Planifié -> En cours -> Terminé)
+        return getRowPriority(a) - getRowPriority(b);
+      }
+      // S'ils ne sont PAS dans la même semaine, on respecte l'ordre chronologique des semaines
+      return a.orderIndex - b.orderIndex;
+    });
+  });
 
   const getBadge = (status: string) => {
     if (status === "Terminé") return <span className="inline-block px-2 py-1 bg-desert-done/20 text-desert-done text-[10px] uppercase font-bold mb-2 border border-desert-done/30">Terminé</span>;
@@ -157,11 +189,44 @@ export default function TimelineSection() {
       {isEditing && (
         <form onSubmit={handleAddWeek} className="mb-8 p-6 bg-desert-paper border border-desert-accent shadow-sm rounded-sm animate-[fadeIn_0.2s_ease-in-out]">
           <h3 className="font-serif font-bold text-desert-accent mb-4 border-b border-desert-border pb-2">➕ Ajouter une action au calendrier</h3>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div><label className="text-xs uppercase font-bold text-desert-todo">Mois (Groupe)</label><input type="text" value={formData.monthGroup} onChange={e => setFormData({...formData, monthGroup: e.target.value})} className="w-full p-2 border border-desert-border mt-1" required /></div>
-            <div><label className="text-xs uppercase font-bold text-desert-todo">Période (ex: Semaine 1)</label><input type="text" value={formData.weekLabel} onChange={e => setFormData({...formData, weekLabel: e.target.value})} className="w-full p-2 border border-desert-border mt-1" required /></div>
+            <div>
+              <label className="text-xs uppercase font-bold text-desert-todo">Mois (Groupe)</label>
+              <input type="text" value={formData.monthGroup} onChange={e => setFormData({...formData, monthGroup: e.target.value})} className="w-full p-2 border border-desert-border mt-1" required />
+            </div>
+            <div>
+              <label className="text-xs uppercase font-bold text-desert-todo">Période (ex: Semaine 1)</label>
+              <input type="text" value={formData.weekLabel} onChange={e => setFormData({...formData, weekLabel: e.target.value})} className="w-full p-2 border border-desert-border mt-1" required />
+            </div>
           </div>
-          <button type="submit" className="bg-desert-accent text-white px-6 py-2 rounded-sm font-bold text-sm w-full uppercase tracking-widest hover:bg-desert-heading transition-colors">Ajouter à cette période</button>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="text-xs uppercase font-bold text-desert-todo">Action Administrative (Optionnel)</label>
+              <textarea 
+                value={formData.adminText} 
+                onChange={e => setFormData({...formData, adminText: e.target.value})} 
+                className="w-full p-2 border border-desert-border mt-1 text-sm font-serif" 
+                rows={2} 
+                placeholder="Ex: Rédaction des statuts..." 
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase font-bold text-desert-todo">Action Technique (Optionnel)</label>
+              <textarea 
+                value={formData.techText} 
+                onChange={e => setFormData({...formData, techText: e.target.value})} 
+                className="w-full p-2 border border-desert-border mt-1 text-sm font-serif" 
+                rows={2} 
+                placeholder="Ex: Configuration serveur..." 
+              />
+            </div>
+          </div>
+
+          <button type="submit" className="bg-desert-accent text-white px-6 py-2 rounded-sm font-bold text-sm w-full uppercase tracking-widest hover:bg-desert-heading transition-colors">
+            Créer la ligne (Statut: Planifié)
+          </button>
         </form>
       )}
 
@@ -232,7 +297,6 @@ export default function TimelineSection() {
                         
                         {isEditing && (
                           <td className="p-4 border-l border-b border-desert-border text-center">
-                            {/* 🚀 CHANGEMENT : On ouvre notre popup au lieu de lancer le window.confirm */}
                             <button onClick={() => setEventToDelete(event.id)} className="text-red-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100" title="Supprimer la ligne">
                               <i className="fa-solid fa-trash"></i>
                             </button>
@@ -249,7 +313,7 @@ export default function TimelineSection() {
         </table>
       </div>
 
-      {/* 🌟 LE SYSTÈME DE POPUP POUR L'ÉDITION */}
+      {/* MODAL D'ÉDITION */}
       {editingTrack && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
           <div className="bg-desert-paper border-2 border-desert-heading w-full max-w-md p-6 rounded-sm shadow-2xl relative">
@@ -273,7 +337,7 @@ export default function TimelineSection() {
                 />
               </div>
               <div>
-                <label className="text-xs uppercase font-bold text-desert-heading block mb-1">Statut d&rsquo;avancement</label>
+                <label className="text-xs uppercase font-bold text-desert-heading block mb-1">Faire évoluer le statut</label>
                 <select 
                   value={trackFormData.status} 
                   onChange={e => setTrackFormData({...trackFormData, status: e.target.value})} 
@@ -297,7 +361,7 @@ export default function TimelineSection() {
         </div>
       )}
 
-      {/* 🚨 NOUVEAU : NOTRE MODAL DE CONFIRMATION DE SUPPRESSION */}
+      {/* MODAL DE CONFIRMATION DE SUPPRESSION */}
       {eventToDelete && (
         <div className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-in-out]">
           <div className="bg-white border-2 border-red-500 w-full max-w-md p-6 rounded-sm shadow-2xl relative">
